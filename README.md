@@ -1,30 +1,92 @@
-# Open Claude Now
+# Open Here Menu
 
 [中文文档](./README.zh-CN.md)
 
-Add **"Open Claude Code Here"** to the Windows right-click context menu. Launch [Claude Code](https://docs.anthropic.com/en/docs/claude-code) in any directory with a single click.
+Create a configurable Windows folder context menu from JSON. The default config enables Claude Code and Reasonix, but the installer is not tied to either program.
 
-## Prerequisites
+## Requirements
 
-- **Windows 10 / 11**
-- **Claude Code** installed and available in PATH:
-  ```
-  npm install -g @anthropic-ai/claude-code
-  ```
+- Windows 10 or Windows 11
+- Windows PowerShell 5.1 or later
+- Each configured application must be installed or referenced by its executable path
 
-## Install
+On Windows 11, the menu appears under the classic **Show more options** menu.
 
-Open PowerShell and run:
+## Configuration
+
+Edit `config.json`:
+
+```json
+{
+  "schemaVersion": 1,
+  "menuTitle": "Open Here",
+  "menuIcon": "assets/terminal.ico",
+  "programs": [
+    {
+      "id": "claude-code",
+      "name": "Claude Code",
+      "command": "claude",
+      "arguments": [],
+      "launchMode": "cmd",
+      "icon": "assets/claude.ico",
+      "enabled": true
+    },
+    {
+      "id": "reasonix",
+      "name": "Reasonix",
+      "command": "reasonix",
+      "arguments": [],
+      "launchMode": "cmd",
+      "icon": "assets/reasonix.ico",
+      "enabled": true
+    }
+  ]
+}
+```
+
+Program fields:
+
+The top-level `schemaVersion` must currently be `1`; `menuTitle` and `menuIcon` control the parent cascading menu.
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `id` | Yes | Unique ID using letters, numbers, dots, underscores, or hyphens |
+| `name` | Yes | Context-menu label |
+| `command` | Yes | A command in PATH, an absolute executable path, or a path relative to the config file |
+| `arguments` | No | String array; `{path}` is replaced with the selected folder path |
+| `launchMode` | Yes | `cmd`, `windowsTerminal`, or `direct` |
+| `icon` | No | Icon file path, relative to the config file when not absolute |
+| `enabled` | No | Set to `false` to omit the program; defaults to enabled |
+
+Launch modes:
+
+- `cmd`: open a persistent Command Prompt for terminal applications.
+- `windowsTerminal`: open the application in Windows Terminal; requires `wt.exe`.
+- `direct`: start a GUI application directly. Use `{path}` when it needs the selected folder as an argument.
+
+The config is trusted local input. Do not install commands or arguments from an untrusted source.
+
+## Validate and install
+
+Validate without changing files or the registry:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1 -DryRun
+```
+
+Install:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-To use **Windows Terminal** instead of cmd:
+Use another config file:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File install.ps1 -UseWindowsTerminal
+powershell -ExecutionPolicy Bypass -File install.ps1 -ConfigPath D:\Configs\my-menu.json
 ```
+
+The installer copies the launcher, a config snapshot, and icons to `%LOCALAPPDATA%\OpenHereMenu`. Re-run it after changing the config.
 
 ## Uninstall
 
@@ -32,40 +94,13 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -UseWindowsTerminal
 powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall
 ```
 
-## Usage
+Uninstall removes the configurable menu, legacy `ClaudeCode` menu entries from the previous version, and the installed files. All registry entries are per-user under `HKEY_CURRENT_USER`, so administrator privileges are not required.
 
-After installation:
+## Registry keys
 
-- **Right-click on empty space** inside any folder → **"Open Claude Code Here"**
-- **Right-click on a folder** → **"Open Claude Code Here"**
-
-### Windows 11 Note
-
-On Windows 11, the option appears under **"Show more options"** (the classic context menu). To restore the full classic right-click menu system-wide:
-
-```
-reg add "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" /f /ve
-```
-
-Then restart Explorer:
-
-```
-taskkill /f /im explorer.exe & start explorer.exe
-```
-
-## How It Works
-
-The tool adds entries to the Windows registry under `HKEY_CURRENT_USER`, so:
-
-- **No admin privileges required**
-- **Per-user installation** (does not affect other users on the same machine)
-- **Clean uninstall** with a single command
-
-Registry keys created:
-
-```
-HKCU\SOFTWARE\Classes\Directory\Background\shell\ClaudeCode
-HKCU\SOFTWARE\Classes\Directory\shell\ClaudeCode
+```text
+HKCU\SOFTWARE\Classes\Directory\Background\shell\OpenHereMenu
+HKCU\SOFTWARE\Classes\Directory\shell\OpenHereMenu
 ```
 
 ## License

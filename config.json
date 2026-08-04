@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "menuTitle": "Open Here",
+  "menuIcon": "assets/terminal.ico",
+  "programs": [
+    {
+      "id": "claude-code",
+      "name": "Claude Code",
+      "command": "claude",
+      "arguments": [],
+      "launchMode": "cmd",
+      "icon": "assets/claude.ico",
+      "enabled": true
+    },
+    {
+      "id": "reasonix",
+      "name": "Reasonix",
+      "command": "reasonix",
+      "arguments": [],
+      "launchMode": "cmd",
+      "icon": "assets/reasonix.ico",
+      "enabled": true
+    }
+  ]
+}

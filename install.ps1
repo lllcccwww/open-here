@@ -1,109 +1,311 @@
 # ============================================
-# Open Claude Now - Install Script
-# Adds "Open Claude Code Here" to Windows right-click context menu
+# Open Here Menu - configuration-driven installer
 # ============================================
 
+[CmdletBinding()]
 param(
-    [switch]$UseWindowsTerminal,
-    [switch]$Uninstall
+    [string]$ConfigPath,
+    [switch]$Uninstall,
+    [switch]$DryRun
 )
 
 $ErrorActionPreference = "Stop"
 
-$regPathBg  = "HKCU:\SOFTWARE\Classes\Directory\Background\shell\ClaudeCode"
-$regPathDir = "HKCU:\SOFTWARE\Classes\Directory\shell\ClaudeCode"
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
+    $ConfigPath = Join-Path $PSScriptRoot "config.json"
+}
 
-# --- Uninstall ---
+$menuKeyName = "OpenHereMenu"
+$installDir = Join-Path $env:LOCALAPPDATA "OpenHereMenu"
+$registryRoots = @(
+    "HKCU:\SOFTWARE\Classes\Directory\Background\shell\$menuKeyName",
+    "HKCU:\SOFTWARE\Classes\Directory\shell\$menuKeyName"
+)
+$legacyRegistryRoots = @(
+    "HKCU:\SOFTWARE\Classes\Directory\Background\shell\ClaudeCode",
+    "HKCU:\SOFTWARE\Classes\Directory\shell\ClaudeCode"
+)
+
+function Write-Status {
+    param(
+        [string]$Message,
+        [ConsoleColor]$Color = [ConsoleColor]::Gray
+    )
+    Write-Host $Message -ForegroundColor $Color
+}
+
+function Remove-RegisteredMenu {
+    param([string[]]$Paths)
+
+    foreach ($path in $Paths) {
+        if (Test-Path -LiteralPath $path) {
+            if ($DryRun) {
+                Write-Status "  [DRY RUN] Remove registry key: $path" Yellow
+            } else {
+                Remove-Item -LiteralPath $path -Recurse -Force
+                Write-Status "  [OK] Removed registry key: $path" Green
+            }
+        }
+    }
+}
+
+function Get-RequiredProperty {
+    param(
+        [object]$Object,
+        [string]$Name,
+        [string]$Context
+    )
+
+    if (-not ($Object.PSObject.Properties.Name -contains $Name)) {
+        throw "$Context is missing required property '$Name'."
+    }
+
+    $value = $Object.$Name
+    if ($null -eq $value -or ([string]$value).Trim().Length -eq 0) {
+        throw "$Context property '$Name' cannot be empty."
+    }
+    return $value
+}
+
+function Resolve-SourcePath {
+    param(
+        [string]$Path,
+        [string]$BaseDirectory
+    )
+
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        return [System.IO.Path]::GetFullPath($Path)
+    }
+    return [System.IO.Path]::GetFullPath((Join-Path $BaseDirectory $Path))
+}
+
+function Copy-MenuIcon {
+    param(
+        [string]$Icon,
+        [string]$Id,
+        [string]$ConfigDirectory,
+        [string]$DestinationDirectory
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Icon)) {
+        return $null
+    }
+
+    $sourcePath = Resolve-SourcePath -Path $Icon -BaseDirectory $ConfigDirectory
+    if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+        throw "Icon for '$Id' was not found: $sourcePath"
+    }
+
+    $extension = [System.IO.Path]::GetExtension($sourcePath)
+    $contentHash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.Substring(0, 12).ToLowerInvariant()
+    $destinationPath = Join-Path $DestinationDirectory ("{0}-{1}{2}" -f $Id, $contentHash, $extension)
+
+    if (-not $DryRun) {
+        Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
+    }
+    return $destinationPath
+}
+
+function Set-RegistryString {
+    param(
+        [string]$Path,
+        [string]$Name,
+        [string]$Value
+    )
+
+    New-ItemProperty -LiteralPath $Path -Name $Name -Value $Value -PropertyType String -Force | Out-Null
+}
+
+Write-Host ""
+Write-Status "  Open Here Menu" Cyan
+Write-Status "  ==============" Cyan
+Write-Host ""
+
 if ($Uninstall) {
-    $removed = $false
-    if (Test-Path $regPathBg) {
-        Remove-Item -Path $regPathBg -Recurse -Force
-        $removed = $true
+    Write-Status "  Removing configurable and legacy menu entries..." Cyan
+    Remove-RegisteredMenu -Paths ($registryRoots + $legacyRegistryRoots)
+
+    if (Test-Path -LiteralPath $installDir) {
+        if ($DryRun) {
+            Write-Status "  [DRY RUN] Remove installed files: $installDir" Yellow
+        } else {
+            Remove-Item -LiteralPath $installDir -Recurse -Force
+            Write-Status "  [OK] Removed installed files: $installDir" Green
+        }
     }
-    if (Test-Path $regPathDir) {
-        Remove-Item -Path $regPathDir -Recurse -Force
-        $removed = $true
-    }
-    if ($removed) {
-        Write-Host "[OK] Claude Code context menu has been removed." -ForegroundColor Green
-    } else {
-        Write-Host "[INFO] Claude Code context menu was not installed. Nothing to remove." -ForegroundColor Yellow
-    }
+
+    Write-Host ""
+    Write-Status "  Uninstall complete." Green
     exit 0
 }
 
-# --- Pre-flight checks ---
-Write-Host ""
-Write-Host "  Open Claude Now - Installer" -ForegroundColor Cyan
-Write-Host "  ============================" -ForegroundColor Cyan
-Write-Host ""
-
-# Check if claude is available
-$claudePath = Get-Command claude -ErrorAction SilentlyContinue
-if (-not $claudePath) {
-    Write-Host "[ERROR] 'claude' command not found in PATH." -ForegroundColor Red
-    Write-Host ""
-    Write-Host "  Please install Claude Code first:" -ForegroundColor Yellow
-    Write-Host "    npm install -g @anthropic-ai/claude-code" -ForegroundColor White
-    Write-Host ""
-    Write-Host "  Then re-run this script." -ForegroundColor Yellow
-    exit 1
-}
-Write-Host "  [OK] Found claude at: $($claudePath.Source)" -ForegroundColor Green
-
-# Locate the icon file (claude.ico next to this script)
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$iconFile  = Join-Path $scriptDir "assets\claude.ico"
-if (Test-Path $iconFile) {
-    Write-Host "  [OK] Found icon: $iconFile" -ForegroundColor Green
-} else {
-    Write-Host "  [WARN] claude.ico not found next to script, using default icon." -ForegroundColor Yellow
-    $iconFile = "cmd.exe"
+$resolvedConfigPath = [System.IO.Path]::GetFullPath($ConfigPath)
+if (-not (Test-Path -LiteralPath $resolvedConfigPath -PathType Leaf)) {
+    throw "Configuration file was not found: $resolvedConfigPath"
 }
 
-# Determine the launch command
-if ($UseWindowsTerminal) {
-    $wtPath = Get-Command wt -ErrorAction SilentlyContinue
-    if (-not $wtPath) {
-        Write-Host "[ERROR] Windows Terminal (wt.exe) not found." -ForegroundColor Red
-        Write-Host "  Re-run without -UseWindowsTerminal to use cmd.exe instead." -ForegroundColor Yellow
-        exit 1
+$configDirectory = Split-Path -Parent $resolvedConfigPath
+$config = Get-Content -LiteralPath $resolvedConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$schemaVersion = [int](Get-RequiredProperty -Object $config -Name "schemaVersion" -Context "Configuration")
+if ($schemaVersion -ne 1) {
+    throw "Unsupported schemaVersion '$schemaVersion'. This installer supports schemaVersion 1."
+}
+$menuTitle = [string](Get-RequiredProperty -Object $config -Name "menuTitle" -Context "Configuration")
+
+if (-not ($config.PSObject.Properties.Name -contains "programs") -or $null -eq $config.programs) {
+    throw "Configuration is missing required property 'programs'."
+}
+
+$programs = @($config.programs | Where-Object {
+    -not ($_.PSObject.Properties.Name -contains "enabled") -or $_.enabled -eq $true
+})
+if ($programs.Count -eq 0) {
+    throw "Configuration must contain at least one enabled program."
+}
+
+$supportedLaunchModes = @("cmd", "windowsTerminal", "direct")
+$seenIds = @{}
+foreach ($program in $programs) {
+    $id = [string](Get-RequiredProperty -Object $program -Name "id" -Context "Program")
+    $name = [string](Get-RequiredProperty -Object $program -Name "name" -Context "Program '$id'")
+    $command = [string](Get-RequiredProperty -Object $program -Name "command" -Context "Program '$id'")
+    $launchMode = [string](Get-RequiredProperty -Object $program -Name "launchMode" -Context "Program '$id'")
+
+    if ($id -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
+        throw "Program id '$id' is invalid. Use letters, numbers, '.', '_' or '-'."
     }
-    Write-Host "  [OK] Using Windows Terminal" -ForegroundColor Green
-    $launchCmd = 'wt.exe -d "%V" cmd /k claude'
-} else {
-    Write-Host "  [OK] Using cmd.exe (add -UseWindowsTerminal for Windows Terminal)" -ForegroundColor Green
-    $launchCmd = 'cmd.exe /k cd /d "%V" && claude'
+    if ($seenIds.ContainsKey($id)) {
+        throw "Program id '$id' is duplicated."
+    }
+    $seenIds[$id] = $true
+
+    if ($supportedLaunchModes -notcontains $launchMode) {
+        throw "Program '$id' has unsupported launchMode '$launchMode'."
+    }
+    if (($program.PSObject.Properties.Name -contains "arguments") -and
+        $null -ne $program.arguments -and
+        $program.arguments -is [string]) {
+        throw "Program '$id' property 'arguments' must be a JSON array of strings."
+    }
+    foreach ($argument in @($program.arguments)) {
+        if ($null -eq $argument -or $argument -isnot [string]) {
+            throw "Every argument for program '$id' must be a JSON string."
+        }
+    }
+
+    if ($launchMode -eq "windowsTerminal" -and -not (Get-Command wt.exe -ErrorAction SilentlyContinue)) {
+        Write-Status "  [WARN] Program '$name' uses Windows Terminal, but wt.exe is not currently in PATH." Yellow
+    }
+    if (-not (Get-Command $command -CommandType Application, ExternalScript -ErrorAction SilentlyContinue) -and
+        -not (Test-Path -LiteralPath (Resolve-SourcePath -Path $command -BaseDirectory $configDirectory) -PathType Leaf)) {
+        Write-Status "  [WARN] Command for '$name' cannot currently be resolved: $command" Yellow
+    }
 }
 
-# --- Install registry entries ---
-Write-Host ""
-Write-Host "  Installing context menu entries..." -ForegroundColor Cyan
+Write-Status "  Configuration: $resolvedConfigPath" Gray
+Write-Status "  Menu title:   $menuTitle" Gray
+Write-Status "  Programs:     $($programs.Count)" Gray
+foreach ($program in $programs) {
+    Write-Status "    - $($program.name) [$($program.launchMode)] -> $($program.command)" Gray
+}
 
-# Right-click on folder background (inside a folder)
-New-Item -Path "$regPathBg\command" -Force | Out-Null
-Set-ItemProperty -Path $regPathBg -Name "(Default)" -Value "Open Claude Code Here"
-Set-ItemProperty -Path $regPathBg -Name "Icon" -Value $iconFile
-Set-ItemProperty -Path "$regPathBg\command" -Name "(Default)" -Value $launchCmd
+$sourceLauncher = Join-Path $PSScriptRoot "launcher.ps1"
+if (-not (Test-Path -LiteralPath $sourceLauncher -PathType Leaf)) {
+    throw "Launcher script was not found: $sourceLauncher"
+}
 
-# Right-click on a folder
-New-Item -Path "$regPathDir\command" -Force | Out-Null
-Set-ItemProperty -Path $regPathDir -Name "(Default)" -Value "Open Claude Code Here"
-Set-ItemProperty -Path $regPathDir -Name "Icon" -Value $iconFile
-Set-ItemProperty -Path "$regPathDir\command" -Name "(Default)" -Value $launchCmd
+$iconsDirectory = Join-Path $installDir "icons"
+if (-not $DryRun) {
+    if (Test-Path -LiteralPath $iconsDirectory) {
+        Remove-Item -LiteralPath $iconsDirectory -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $iconsDirectory -Force | Out-Null
+}
+
+$programIcons = @{}
+foreach ($program in $programs) {
+    $icon = if ($program.PSObject.Properties.Name -contains "icon") { [string]$program.icon } else { $null }
+    $programIcons[[string]$program.id] = Copy-MenuIcon -Icon $icon -Id ([string]$program.id) -ConfigDirectory $configDirectory -DestinationDirectory $iconsDirectory
+}
+
+$menuIcon = $null
+if ($config.PSObject.Properties.Name -contains "menuIcon" -and -not [string]::IsNullOrWhiteSpace([string]$config.menuIcon)) {
+    $menuIcon = Copy-MenuIcon -Icon ([string]$config.menuIcon) -Id "menu" -ConfigDirectory $configDirectory -DestinationDirectory $iconsDirectory
+} elseif ($programIcons.Count -gt 0) {
+    $menuIcon = $programIcons[[string]$programs[0].id]
+}
+
+if ($DryRun) {
+    Write-Host ""
+    Write-Status "  [DRY RUN] Configuration is valid. No files or registry keys were changed." Green
+    exit 0
+}
+
+Copy-Item -LiteralPath $sourceLauncher -Destination (Join-Path $installDir "launcher.ps1") -Force
+
+# Store a self-contained snapshot. Relative executable paths are made absolute
+# before the config is copied away from its source directory.
+foreach ($program in @($config.programs)) {
+    $command = [string]$program.command
+    if (-not [System.IO.Path]::IsPathRooted($command) -and
+        ($command.Contains("\") -or $command.Contains("/"))) {
+        $relativeCommand = Resolve-SourcePath -Path $command -BaseDirectory $configDirectory
+        if (Test-Path -LiteralPath $relativeCommand -PathType Leaf) {
+            $program.command = $relativeCommand
+        }
+    }
+}
+$config | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $installDir "config.json") -Encoding UTF8
+
+# Remove the previous version and rebuild the namespaced menu so reinstalling is idempotent.
+Remove-RegisteredMenu -Paths ($registryRoots + $legacyRegistryRoots)
+
+$installedLauncher = Join-Path $installDir "launcher.ps1"
+$installedConfig = Join-Path $installDir "config.json"
+$powershellExe = (Get-Command powershell.exe -CommandType Application -ErrorAction Stop).Source
+$launcherCommandTemplate = '"{0}" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "{1}" -ConfigPath "{2}" -ProgramId "{3}" -TargetPath "{4}"'
+
+try {
+    foreach ($root in $registryRoots) {
+        $isBackgroundMenu = $root -like "*\Directory\Background\*"
+        $targetPlaceholder = if ($isBackgroundMenu) { "%V" } else { "%1" }
+        $extendedSubcommandsReference = if ($isBackgroundMenu) {
+            "Directory\Background\shell\$menuKeyName"
+        } else {
+            "Directory\shell\$menuKeyName"
+        }
+        $subcommandsPath = Join-Path $root "shell"
+        New-Item -Path $subcommandsPath -Force | Out-Null
+        Set-RegistryString -Path $root -Name "MUIVerb" -Value $menuTitle
+        Set-RegistryString -Path $root -Name "ExtendedSubCommandsKey" -Value $extendedSubcommandsReference
+        if ($menuIcon) {
+            Set-RegistryString -Path $root -Name "Icon" -Value $menuIcon
+        }
+
+        for ($index = 0; $index -lt $programs.Count; $index++) {
+            $program = $programs[$index]
+            $id = [string]$program.id
+            $verbName = "{0:D3}_{1}" -f ($index + 1), $id
+            $verbPath = Join-Path $subcommandsPath $verbName
+            $commandPath = Join-Path $verbPath "command"
+
+            New-Item -Path $commandPath -Force | Out-Null
+            Set-RegistryString -Path $verbPath -Name "MUIVerb" -Value ([string]$program.name)
+            if ($programIcons[$id]) {
+                Set-RegistryString -Path $verbPath -Name "Icon" -Value $programIcons[$id]
+            }
+
+            $launcherCommand = $launcherCommandTemplate -f $powershellExe, $installedLauncher, $installedConfig, $id, $targetPlaceholder
+            Set-Item -LiteralPath $commandPath -Value $launcherCommand
+        }
+    }
+} catch {
+    Remove-RegisteredMenu -Paths $registryRoots
+    throw
+}
 
 Write-Host ""
-Write-Host "  [OK] Installation complete!" -ForegroundColor Green
-Write-Host ""
-Write-Host "  Usage:" -ForegroundColor White
-Write-Host "    - Right-click inside any folder  -> 'Open Claude Code Here'" -ForegroundColor Gray
-Write-Host "    - Right-click on any folder      -> 'Open Claude Code Here'" -ForegroundColor Gray
-Write-Host ""
-Write-Host "  Note for Windows 11:" -ForegroundColor Yellow
-Write-Host "    The option appears under 'Show more options' (classic menu)." -ForegroundColor Gray
-Write-Host "    To restore the classic right-click menu system-wide, run:" -ForegroundColor Gray
-Write-Host '    reg add "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" /f /ve' -ForegroundColor Gray
-Write-Host ""
-Write-Host "  To uninstall, run:" -ForegroundColor White
-Write-Host "    powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall" -ForegroundColor Gray
+Write-Status "  [OK] Installation complete." Green
+Write-Status "  Right-click a folder or folder background and open '$menuTitle'." Gray
+Write-Status "  Re-run this installer after changing config.json." Gray
 Write-Host ""
