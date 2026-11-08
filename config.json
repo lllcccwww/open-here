@@ -1,4 +1,4 @@
-{
+﻿{
   "schemaVersion": 1,
   "menuTitle": "Open Here",
   "menuIcon": "assets/terminal.ico",
@@ -19,6 +19,26 @@
       "arguments": [],
       "launchMode": "cmd",
       "icon": "assets/reasonix.ico",
+      "enabled": true
+    },
+    {
+      "id": "deepseek-dsh-web",
+      "name": "DeepSeek DSH Web",
+      "command": "npx",
+      "arguments": ["@deepseek-ai/dsh", "web"],
+      "launchMode": "webService",
+      "url": "http://127.0.0.1:3080/",
+      "startupTimeoutSeconds": 120,
+      "icon": "assets/deepseek.ico",
+      "enabled": true
+    },
+    {
+      "id": "pi",
+      "name": "Pi Agent",
+      "command": "pi",
+      "arguments": [],
+      "launchMode": "cmd",
+      "icon": "assets/pi.ico",
       "enabled": true
     }
   ]
