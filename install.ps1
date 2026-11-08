@@ -141,6 +141,11 @@ function Show-RefreshError {
 function Invoke-Install {
     $resolvedConfigPath = [System.IO.Path]::GetFullPath($ConfigPath)
     if (-not (Test-Path -LiteralPath $resolvedConfigPath -PathType Leaf)) {
+        $examplePath = Join-Path $PSScriptRoot "config.example.json"
+        $defaultPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "config.json"))
+        if ($resolvedConfigPath -ieq $defaultPath -and (Test-Path -LiteralPath $examplePath -PathType Leaf)) {
+            throw "Configuration file was not found: $resolvedConfigPath. Create your local configuration from the template: Copy-Item `"$examplePath`" `"$defaultPath`""
+        }
         throw "Configuration file was not found: $resolvedConfigPath"
     }
 

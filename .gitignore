@@ -1,3 +1,4 @@
 *.bak
 *.log
 .claude
+config.json

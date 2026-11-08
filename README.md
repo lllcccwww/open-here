@@ -22,7 +22,11 @@ On Windows 11, the menu appears under the classic **Show more options** menu.
 
 ## Configuration
 
-Edit `config.json`. Changes to what an existing entry *runs* apply on the next click; changes to the menu *structure* need one click on **Apply config changes** (see above):
+`config.json` is your local configuration and is not tracked by git. Start by copying the template, then edit it freely — your changes never get committed. Changes to what an existing entry *runs* apply on the next click; changes to the menu *structure* need one click on **Apply config changes** (see above):
+
+```powershell
+Copy-Item config.example.json config.json
+```
 
 ```json
 {

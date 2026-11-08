@@ -20,7 +20,11 @@ Windows 11 默认会把菜单放在“显示更多选项”的经典右键菜单
 
 ## 配置程序
 
-编辑项目根目录中的 `config.json`。修改已有菜单项"运行什么"下次点击即生效；改动菜单"结构"则需点一次 **Apply config changes**（见上文）：
+`config.json` 是你的本地配置，不纳入 git 跟踪。先从模板复制一份，之后随便改、不会被提交。修改已有菜单项"运行什么"下次点击即生效；改动菜单"结构"则需点一次 **Apply config changes**（见上文）：
+
+```powershell
+Copy-Item config.example.json config.json
+```
 
 ```json
 {
